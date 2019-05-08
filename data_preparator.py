@@ -177,7 +177,7 @@ class DataPreparator:
         xmins, xmaxs, ymins, ymaxs, classes_text, classes = [], [], [], [], [], []
 
         # на случай нескодьких детекций в одном файле можно тут добавить цикл, но у нас всего одна детекция в каждом файле
-        ymin, xmin, ymax, xmax = bbox
+        xmin, ymin, xmax, ymax = bbox
         width, height, depth = img_shape
 
         xmins.append(xmin / width)
@@ -206,7 +206,7 @@ class DataPreparator:
 
     def create_xml_example(self, file_descr, bbox, img_shape):
         # создаём XML
-        ymin, xmin, ymax, xmax = bbox
+        xmin, ymin, xmax, ymax = bbox
         width, height, depth = img_shape
         # create XML
         root_xml = etree.Element('annotation')
