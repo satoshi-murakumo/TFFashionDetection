@@ -46,13 +46,15 @@ class ObjectDetector:
         ]
 
     def init_category(self):
-        label_map = label_map_util.load_labelmap(self.PATH_TO_LABELS)
-        categories = label_map_util.convert_label_map_to_categories(
-            label_map,
-            max_num_classes=3,
-            use_display_name=True
-        )
-        self.category_index = label_map_util.create_category_index(categories)
+        # label_map = label_map_util.load_labelmap(self.PATH_TO_LABELS)
+        # categories = label_map_util.convert_label_map_to_categories(
+        #     label_map,
+        #     max_num_classes=3,
+        #     use_display_name=True
+        # )
+        # self.category_index = label_map_util.create_category_index(categories)
+
+        self.category_index = label_map_util.create_category_index_from_labelmap(self.PATH_TO_LABELS)
 
     def _prepare_img_arrays(self, img_dir, batches):
         img_array = []
@@ -104,15 +106,23 @@ class ObjectDetector:
                     (boxes, scores, classes, num) = sess.run(
                         [detection_boxes, detection_scores, detection_classes, num_detections],
                         feed_dict={image_tensor: image['img_array']})
-                    for index, value in enumerate(classes[0]):
-                        img_detections.append({
-                            'category_name': self.category_index.get(value)['name'],
-                            'category_id': self.category_index.get(value)['id'],
-                            'category_proba': scores[0, index],
-                            'category_box': boxes[0, index],
-                            'img_array': image['img_array'],
-                            'img_name': image['img_name']
-                        })
+
+                    class_ids = []
+                    class_names = []
+                    for v in classes[0]:
+                        class_ids.append(self.category_index.get(v)['id'])
+                        class_names.append(self.category_index.get(v)['name'])
+
+                    img_detections.append({
+                        'img_name': image['img_name'],
+                        'num_detections': int(num[0]),
+                        'detection_classes': classes[0].astype(np.int),
+                        'detection_boxes': boxes[0],
+                        'detection_scores': scores[0],
+                        'detection_class_ids': class_ids,
+                        'detection_class_names': class_names
+                    })
+
         # возвращаем результат
         self.img_detections = img_detections
 

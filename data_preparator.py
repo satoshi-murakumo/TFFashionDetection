@@ -38,19 +38,19 @@ class DataPreparator:
         self.bboxes = None
 
         # категории для обучения
-        self.label_mapping = {1: 'upper-body', 2: 'lower-body', 3: 'full-body'}
+        self.category_type = {1: 'upper-body', 2: 'lower-body', 3: 'full-body'}
         # вспомогательные функции для чтения файлов DeepFashion
         self.row_processors = {
-            'list_bbox': lambda row: {row[0]: [int(i) for i in row[1:]]},
-            'list_category_cloth': lambda row: {row[0].lower(): int(row[1])},
-            'list_category_img': lambda row: {row[0].lower(): int(row[1])},
-            'list_eval_partition': lambda row: {row[0]: row[1]}
+            'list_bbox': lambda index, row: {row[0]: [int(i) for i in row[1:]]},
+            'list_category_cloth': lambda index, row: {(index + 3): {'text': row[0], 'type':int(row[1])}},
+            'list_category_img': lambda index, row: {row[0]: int(row[1])+ 3},
+            'list_eval_partition': lambda index, row: {row[0]: row[1]}
         }
 
     def load_config(self):
         """Загружаем JSON-конфиг со служебной информацией"""
         # TODO: определять внутри скрипта, откуда он запускается
-        return json.loads(open(os.path.join('/content', 'TFFashionDetection', 'etc/directory_conf.json'), 'r').read())
+        return json.loads(open(os.path.join(PROJECT_ROOT, 'TFFashionDetection', 'etc/directory_conf.json'), 'r').read())
 
     def build(self):
         print("Сохраняем информацию о категориях товаров")
@@ -90,38 +90,44 @@ class DataPreparator:
             _ = f.readline().strip()
             _ = f.readline().strip().split()
             lines = {}
+            index = 1
             for line in f:
                 row = line.strip().split()
                 if row_processor is not None:
-                    row = row_processor(row)
+                    row = row_processor(index, row)
                 lines.update(row)
+                index += 1
             return lines
 
     def prepare_img_index(self):
-        def search_category(f_name):
-            return [
-                self.clothes_to_category[k] for k in self.clothes_to_category
-                if k in f_name
-            ][0]
+        # def search_category(f_name):
+        #     return [
+        #         self.clothes_to_category[k] for k in self.clothes_to_category
+        #         if k in f_name
+        #     ][0]
 
         self.img_index = {
             k: {
                 'eval': self.img_to_eval[k],
-                'filename': ('_'.join(k.split('/')[-2:])).lower()
+                'filename': ('_'.join(k.split('/')[-2:])),
+                'class': [self.img_to_category[k],
+                          self.clothes_to_category[self.img_to_category[k]]['type']
+                         ]
             }
             for k in self.img_to_eval
         }
-        # определяем класс изображения (по имени файла)
-        [self.img_index[k].update({
-            'class': search_category(self.img_index[k]['filename'])
-        }) for k in self.img_index
-        ]
 
-        self.balance_img_index()
+        # # определяем класс изображения (по имени файла)
+        # [self.img_index[k].update({
+        #     'class': search_category(self.img_index[k]['filename'])
+        # }) for k in self.img_index
+        # ]
+
+        # self.balance_img_index()
 
         print(
             'Распределение примеров по классам: %s' %
-            Counter([j['class'] for i, j in self.img_index.items()])
+            Counter([','.join(map(str,j['class'])) for i, j in self.img_index.items()])
         )
 
         print(
@@ -180,12 +186,14 @@ class DataPreparator:
         xmin, ymin, xmax, ymax = bbox
         width, height, depth = img_shape
 
-        xmins.append(xmin / width)
-        xmaxs.append(xmax / width)
-        ymins.append(ymin / height)
-        ymaxs.append(ymax / height)
-        classes_text.append(self.label_mapping[file_descr['class']].encode('utf8'))
-        classes.append(file_descr['class'])
+        xmins.append(min(xmin / width, 1.0))
+        xmaxs.append(min(xmax / width, 1.0))
+        ymins.append(min(ymin / height, 1.0))
+        ymaxs.append(min(ymax / height, 1.0))
+        classes.append(file_descr['class'][0])
+        classes_text.append(self.clothes_to_category[file_descr['class'][0]]['text'].encode('utf8'))
+        classes.append(file_descr['class'][1])
+        classes_text.append(self.category_type[file_descr['class'][1]].encode('utf8'))
 
         tf_example = tf.train.Example(features=tf.train.Features(feature={
             'image/height': dataset_util.int64_feature(height),
@@ -234,7 +242,9 @@ class DataPreparator:
         child = etree.Element('object')
         # name
         name = etree.Element('name')
-        name.text = self.label_mapping[file_descr['class']]
+        name.text =  self.clothes_to_category[file_descr['class'][0]]['text']
+        name.text += ','
+        name.text += self.category_type[file_descr['class'][1]]
         child.append(name)
         # bndbox -> ymin, xmin, ymax, xmax
         bndbox = etree.Element('bndbox')
@@ -252,7 +262,7 @@ class DataPreparator:
         bndbox.append(_ymax)
         #
         _xmax = etree.Element('xmax')
-        _xmax.text = str(ymin)
+        _xmax.text = str(xmax)
         bndbox.append(_xmax)
         #
         child.append(bndbox)
@@ -275,8 +285,10 @@ class DataPreparator:
         # записываем файл с метками классов
         label_map_path = os.path.join(self.destination_dir, 'annotations', 'label_map.pbtxt')
         label_map_file = open(label_map_path, 'w')
-        for k, v in self.label_mapping.items():
+        for k, v in self.category_type.items():
             label_map_file.write("""item { id: %s name: '%s'}\n""" % (k, v))
+        for k, v in self.clothes_to_category.items():
+            label_map_file.write("""item { id: %s name: '%s'}\n""" % (k, v['text']))
         label_map_file.close()
         print('Создали XML в директории: %s' % base_xml_path)
         print('Файл с метками классов: %s' % label_map_path)
@@ -296,10 +308,10 @@ class DataPreparator:
                 writer.write(tf_example.SerializeToString())
                 trainval_descriptor.write(img_descr['filename'][:-4] + '\n')
                 # копируем изображение в директорию (пригодится для инференса)
-                shutil.copy(
-                    os.path.join(self.fashion_data, 'Img', img_path),
-                    os.path.join(self.destination_dir, 'images', img_descr['filename'])
-                )
+                # shutil.copy(
+                #     os.path.join(self.fashion_data, 'Img', img_path),
+                #     os.path.join(self.destination_dir, 'images', img_descr['filename'])
+                # )
         writer.close()
         print('Создали файл формата TFRecords: %s' % tfr_out_path)
 
