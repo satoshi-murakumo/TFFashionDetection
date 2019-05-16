@@ -50,7 +50,7 @@ class DataPreparator:
     def load_config(self):
         """Загружаем JSON-конфиг со служебной информацией"""
         # TODO: определять внутри скрипта, откуда он запускается
-        return json.loads(open(os.path.join(PROJECT_ROOT, 'TFFashionDetection', 'etc/directory_conf.json'), 'r').read())
+        return json.loads(open(os.path.join('/content', 'TFFashionDetection', 'etc/directory_conf.json'), 'r').read())
 
     def build(self):
         print("Сохраняем информацию о категориях товаров")
