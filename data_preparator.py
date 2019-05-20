@@ -305,11 +305,6 @@ class DataPreparator:
 
     def generate_files_by_scenario(self, scenario, trainval_descriptor, base_xml_path):
         """Генерим наборы файлов: XML+TFR"""
-
-        # reduce validation example
-        val_examples = 1000
-        val_counts = 0
-
         tfr_out_path = os.path.join(self.destination_dir, 'annotations', scenario + '.record')
         num_shards = 10
         with contextlib.ExitStack() as close_stack:
@@ -330,10 +325,6 @@ class DataPreparator:
                     #     os.path.join(self.fashion_data, 'Img', img_path),
                     #     os.path.join(self.destination_dir, 'images', img_descr['filename'])
                     # )
-                if scenario == 'val':
-                    val_counts += 1
-                    if val_counts >= val_examples:
-                        break
 
         print('Создали файл формата TFRecords: %s' % tfr_out_path)
 
