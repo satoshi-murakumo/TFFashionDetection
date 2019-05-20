@@ -4,6 +4,8 @@ import sys
 from collections import Counter
 import json
 import logging
+import contextlib
+from object_detection.dataset_tools import tf_record_creation_util
 
 import tensorflow as tf
 import numpy as np
@@ -57,7 +59,7 @@ class DataPreparator:
         self.create_tf_dirs()
         self.deep_fashion_data_structure()
         self.prepare_img_index()
-        self.create_tf_records(['train', 'test'])  # ещё есть val
+        self.create_tf_records(['train', 'val', 'test'])  # ещё есть val
 
     def create_tf_dirs(self):
         """Создаём структуру директорий для Tensorflow API"""
@@ -186,12 +188,20 @@ class DataPreparator:
         xmin, ymin, xmax, ymax = bbox
         width, height, depth = img_shape
 
-        xmins.append(min(xmin / width, 1.0))
-        xmaxs.append(min(xmax / width, 1.0))
-        ymins.append(min(ymin / height, 1.0))
-        ymaxs.append(min(ymax / height, 1.0))
+        # multi label 
+        # category
+        xmins.append(max(min(xmin / width, 1.0), 0))
+        xmaxs.append(max(min(xmax / width, 1.0), 0))
+        ymins.append(max(min(ymin / height, 1.0), 0))
+        ymaxs.append(max(min(ymax / height, 1.0), 0))
         classes.append(file_descr['class'][0])
         classes_text.append(self.clothes_to_category[file_descr['class'][0]]['text'].encode('utf8'))
+
+        # category type
+        xmins.append(max(min(xmin / width, 1.0), 0))
+        xmaxs.append(max(min(xmax / width, 1.0), 0))
+        ymins.append(max(min(ymin / height, 1.0), 0))
+        ymaxs.append(max(min(ymax / height, 1.0), 0))
         classes.append(file_descr['class'][1])
         classes_text.append(self.category_type[file_descr['class'][1]].encode('utf8'))
 
@@ -295,24 +305,36 @@ class DataPreparator:
 
     def generate_files_by_scenario(self, scenario, trainval_descriptor, base_xml_path):
         """Генерим наборы файлов: XML+TFR"""
+
+        # reduce validation example
+        val_examples = 1000
+        val_counts = 0
+
         tfr_out_path = os.path.join(self.destination_dir, 'annotations', scenario + '.record')
-        writer = tf.python_io.TFRecordWriter(tfr_out_path)
-        img_keys = list(self.img_index.keys())
-        np.random.shuffle(img_keys)
-        for img_path in img_keys:
-            img_descr = self.img_index[img_path]
-            if img_descr['eval'] == scenario:
-                tf_example, xml_example = self.get_img_descriptions(img_path, img_descr)
-                with open(os.path.join(base_xml_path, img_descr['filename'][:-4] + '.xml'), 'w') as xml_file:
-                    xml_file.write(xml_example.decode("utf-8"))
-                writer.write(tf_example.SerializeToString())
-                trainval_descriptor.write(img_descr['filename'][:-4] + '\n')
-                # копируем изображение в директорию (пригодится для инференса)
-                # shutil.copy(
-                #     os.path.join(self.fashion_data, 'Img', img_path),
-                #     os.path.join(self.destination_dir, 'images', img_descr['filename'])
-                # )
-        writer.close()
+        num_shards = 10
+        with contextlib.ExitStack() as close_stack:
+            writer = tf_record_creation_util.open_sharded_output_tfrecords(
+                close_stack, tfr_out_path, num_shards)
+            img_keys = list(self.img_index.keys())
+            np.random.shuffle(img_keys)
+            for idx, img_path in enumerate(img_keys):
+                img_descr = self.img_index[img_path]
+                if img_descr['eval'] == scenario:
+                    tf_example, xml_example = self.get_img_descriptions(img_path, img_descr)
+                    with open(os.path.join(base_xml_path, img_descr['filename'][:-4] + '.xml'), 'w') as xml_file:
+                        xml_file.write(xml_example.decode("utf-8"))
+                    writer[idx % num_shards].write(tf_example.SerializeToString())
+                    trainval_descriptor.write(img_descr['filename'][:-4] + '\n')
+                    # копируем изображение в директорию (пригодится для инференса)
+                    # shutil.copy(
+                    #     os.path.join(self.fashion_data, 'Img', img_path),
+                    #     os.path.join(self.destination_dir, 'images', img_descr['filename'])
+                    # )
+                if scenario == 'val':
+                    val_counts += 1
+                    if val_counts >= val_examples:
+                        break
+
         print('Создали файл формата TFRecords: %s' % tfr_out_path)
 
 
