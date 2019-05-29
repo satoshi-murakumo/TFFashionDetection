@@ -44,8 +44,10 @@ class DataPreparator:
         # вспомогательные функции для чтения файлов DeepFashion
         self.row_processors = {
             'list_bbox': lambda index, row: {row[0]: [int(i) for i in row[1:]]},
-            'list_category_cloth': lambda index, row: {(index + 3): {'text': row[0], 'type':int(row[1])}},
-            'list_category_img': lambda index, row: {row[0]: int(row[1])+ 3},
+            'list_category_cloth': lambda index, row: {index: {'text': row[0], 'type':int(row[1])}},
+            # 'list_attr_cloth':
+            'list_category_img': lambda index, row: {row[0]: int(row[1])},
+            # 'list_attr_img':
             'list_eval_partition': lambda index, row: {row[0]: row[1]}
         }
 
@@ -189,13 +191,13 @@ class DataPreparator:
         width, height, depth = img_shape
 
         # multi label 
-        # category
-        xmins.append(max(min(xmin / width, 1.0), 0))
-        xmaxs.append(max(min(xmax / width, 1.0), 0))
-        ymins.append(max(min(ymin / height, 1.0), 0))
-        ymaxs.append(max(min(ymax / height, 1.0), 0))
-        classes.append(file_descr['class'][0])
-        classes_text.append(self.clothes_to_category[file_descr['class'][0]]['text'].encode('utf8'))
+        # # category
+        # xmins.append(max(min(xmin / width, 1.0), 0))
+        # xmaxs.append(max(min(xmax / width, 1.0), 0))
+        # ymins.append(max(min(ymin / height, 1.0), 0))
+        # ymaxs.append(max(min(ymax / height, 1.0), 0))
+        # classes.append(file_descr['class'][0])
+        # classes_text.append(self.clothes_to_category[file_descr['class'][0]]['text'].encode('utf8'))
 
         # category type
         xmins.append(max(min(xmin / width, 1.0), 0))
@@ -297,8 +299,8 @@ class DataPreparator:
         label_map_file = open(label_map_path, 'w')
         for k, v in self.category_type.items():
             label_map_file.write("""item { id: %s name: '%s'}\n""" % (k, v))
-        for k, v in self.clothes_to_category.items():
-            label_map_file.write("""item { id: %s name: '%s'}\n""" % (k, v['text']))
+        # for k, v in self.clothes_to_category.items():
+        #     label_map_file.write("""item { id: %s name: '%s'}\n""" % (k, v['text']))
         label_map_file.close()
         print('Создали XML в директории: %s' % base_xml_path)
         print('Файл с метками классов: %s' % label_map_path)
